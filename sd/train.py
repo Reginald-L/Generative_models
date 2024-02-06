@@ -6,7 +6,7 @@ from data.data_utils import ImgDataset
 from torch.utils.data import DataLoader
 from torchvision import transforms as transform
 import torch
-from torch.optim import Adam
+from torch.optim import AdamW
 from torch import nn as nn
 from unet import Model
 from sd.diffusion_schedule import LinearScheduler
@@ -28,7 +28,7 @@ trans = transform.Compose(
 )
 
 img_dataset = ImgDataset(dir='/home/liruijun/projects/datasets/flowers/train', transform=trans)
-data_loader = DataLoader(img_dataset, batch_size=128, shuffle=True)
+data_loader = DataLoader(img_dataset, batch_size=256, shuffle=True)
 
 
 def init_weights(m):
@@ -37,7 +37,7 @@ def init_weights(m):
 
 device = torch.device('cuda:0')
 lr = 1e-3
-epochs = 200
+epochs = 50
 
 model = Model()
 model.apply(init_weights)
@@ -45,7 +45,7 @@ ema_model = copy.deepcopy(model)
 model = model.to(device)
 ema_model = ema_model.to(device)
 
-optimizer = Adam(model.parameters(), lr=1e-3)
+optimizer = AdamW(model.parameters(), lr=1e-3)
 
 loss = nn.MSELoss()
 
@@ -76,6 +76,14 @@ def forward_process(images, t):
     return torch.concat(noise_images, dim=0).to(device), torch.concat(epsilons, dim=0).to(device)
 
 
+def get_pred_images(noise_images, pred_noises, t):
+    pred_images = []
+    for noise_image, pred_noise in zip(noise_images, pred_noises):
+        pred_image = (noise_image - noise_rates[t] * pred_noise) / signal_rates[t]
+        pred_images.append(pred_image.unsqueeze(0))
+    return torch.concat(pred_images, dim=0).to(device)
+
+
 def update_ema_parameters():
     model_parms = OrderedDict(model.named_parameters())
     ema_parms = OrderedDict(ema_model.named_parameters())
@@ -94,17 +102,20 @@ for epoch in tqdm(range(epochs)):
         for t in tqdm(ts):
             noise_imgs, epsilons = forward_process(imgs, t)
             pred_noise = model(noise_imgs, torch.tensor([t]*bsize, device=device).reshape((-1, 1)))
+            pred_imgs = get_pred_images(noise_imgs, pred_noise, t)
             loss_noise = loss(pred_noise, epsilons)
             loss_noise.backward()
             optimizer.step()
             update_ema_parameters()
         wandb.log({"loss": loss_noise})
 
-        pred_noise_imgs = pred_noise[:8]
+        pred_noise_imgs = pred_imgs[:8]
         img_grid = make_grid(pred_noise_imgs, nrow=8)
     save_image(img_grid, f'/home/liruijun/projects/Generative_models/sd/trained_models/img_{epoch}.png')
 
     
 save_model_path = '/home/liruijun/projects/Generative_models/sd/trained_models/flower.pth'
+save_ema_model_path = '/home/liruijun/projects/Generative_models/sd/trained_models/flower_ema.pth'
 print(f'finished training, saving model to - {save_model_path}')
 torch.save(model.state_dict(), save_model_path)
+torch.save(model.state_dict(), save_ema_model_path)
