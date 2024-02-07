@@ -1,8 +1,12 @@
+import os
+import sys
+sys.path.insert(0, '/home/liruijun/projects/Generative_models')
 import torch
 from torch import nn as nn
 from model_util import *
 import math
 import yaml
+from sd.diffusion_schedule import LinearScheduler, BaseScheduler
 
 class ModelConfig:
     def __init__(self):
@@ -101,14 +105,84 @@ class Model(nn.Module):
         out_img = self.convert_img_block(out)
         return out_img
 
+
+class GaussianDiffusion(nn.Module):
+    def __init__(self, scheduler:BaseScheduler):
+        super(GaussianDiffusion, self).__init__()
+        self.model = Model()
+        self.scheduler = scheduler
+        self.noise_rates, self.signal_rates = self.scheduler.diffusion_scheduler()
+        
+    def forward(self, x):
+        return self.model.forward(x)
+
+    def up_dim_tensor(self, tensor, bsize):
+        tensor = tensor.unsqueeze(0)
+        tensor = torch.concat([tensor] * bsize, dim=0).reshape((-1, 1, 1, 1))
+        return tensor
+
+    def get_noise_signal_rates_by_t(self, t):
+        noise_rate, signal_rate = self.noise_rates[t], self.signal_rates[t]
+        return noise_rate, signal_rate
     
+    def get_noise_signal_rates_from_custom_rates(self, noise_rates, signal_rates, t):
+        print(t)
+        noise_rate, signal_rate = noise_rates[t], signal_rates[t]
+        return noise_rate, signal_rate
+
+    def forward_diffusion(self, imgs, t):
+        device = imgs.device
+        bsize = imgs.shape[0]
+        # get noise images
+        # sample noise
+        noise_rate, signal_rate = self.get_noise_signal_rates_by_t(t)
+        noise_rate = self.up_dim_tensor(noise_rate, bsize).to(device)
+        signal_rate = self.up_dim_tensor(signal_rate, bsize).to(device)
+        epsilons = torch.randn_like(imgs, device=device)
+        noise_imgs = signal_rate * imgs + noise_rate * epsilons
+        return noise_imgs.to(device), epsilons.to(device)
+
+    def denoise(self, noise_imgs, noise_rates, signal_rates, t):
+        bsize = noise_imgs.shape[0]
+        noise_rate, signal_rate = self.get_noise_signal_rates_from_custom_rates(noise_rates, signal_rates, t)
+        noise_rate = self.up_dim_tensor(noise_rate, bsize)
+        signal_rate = self.up_dim_tensor(signal_rate, bsize)
+        pred_noises = self.model(noise_imgs, noise_rate**2)
+        pred_imgs = (noise_imgs - noise_rate * pred_noises) / signal_rate
+        return pred_imgs, pred_noises
+
+    def denoise_with_model_rates(self, noise_imgs, t):
+        device = noise_imgs.device
+        bsize = noise_imgs.shape[0]
+        noise_rate, signal_rate = self.get_noise_signal_rates_by_t(t)
+        noise_rate = self.up_dim_tensor(noise_rate, bsize).to(device)
+        signal_rate = self.up_dim_tensor(signal_rate, bsize).to(device)
+        pred_noises = self.model(noise_imgs, noise_rate**2)
+        pred_imgs = (noise_imgs - noise_rate * pred_noises) / signal_rate
+        return pred_imgs.to(device), pred_noises.to(device)
+
+    def reverse_diffusion(self, noises, diffusion_steps):
+        diffusion_times = torch.tensor([x / diffusion_steps for x in range(diffusion_steps)])
+        noise_rates, signal_rates = self.scheduler.diffusion_scheduler_with_diffusion_times(diffusion_times)
+        current_images = noises
+        for step in range(diffusion_steps)[::-1]:
+            current_images, _ = self.denoise(current_images, noise_rates, signal_rates, step)
+        pred_imgs = current_images
+        return pred_imgs  
+
 
 
 if __name__ == '__main__':
-    model = Model()
-    img = torch.rand(1, 3, 64, 64)
-    noise_variance = torch.tensor(1.2).reshape((-1, 1))
-    out = model(img, noise_variance)
-    print(out.shape)
+    # model = Model()
+    # img = torch.rand(1, 3, 64, 64)
+    # noise_variance = torch.tensor(1.2).reshape((-1, 1))
+    # out = model(img, noise_variance)
+    # print(out.shape)
     # print(model)
+    T=1000
+    scheduler = LinearScheduler(torch.tensor([x / T for x in range(T)]))
+    diffusion = GaussianDiffusion(scheduler)
+    imgs = torch.randn(size=(8, 3, 64, 64))
+    diffusion.reverse_diffusion(imgs, 20)
+
 

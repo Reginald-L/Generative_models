@@ -4,7 +4,8 @@ import math
 
 class BaseScheduler():
     def __init__(self, diffusion_times):
-        self.diffusion_times = torch.tensor(diffusion_times)
+        assert isinstance(diffusion_times, torch.Tensor), "diffusion_times must be a torch.Tensor"
+        self.diffusion_times = diffusion_times
 
     def diffusion_scheduler(self):
         pass
@@ -18,6 +19,14 @@ class LinearScheduler(BaseScheduler):
 
     def diffusion_scheduler(self):
         betas = self.min_rate + self.diffusion_times * (self.max_rate - self.min_rate)
+        alphas = 1 - betas
+        alpha_bars = torch.cumprod(alphas, dim=0)
+        signal_rates = torch.sqrt(alpha_bars)
+        noise_rates = torch.sqrt(1 - alpha_bars)
+        return noise_rates, signal_rates
+    
+    def diffusion_scheduler_with_diffusion_times(self, diffusion_times):
+        betas = self.min_rate + diffusion_times * (self.max_rate - self.min_rate)
         alphas = 1 - betas
         alpha_bars = torch.cumprod(alphas, dim=0)
         signal_rates = torch.sqrt(alpha_bars)
