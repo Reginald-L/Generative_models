@@ -31,7 +31,7 @@ class LinearScheduler(BaseScheduler):
         alpha_bars = torch.cumprod(alphas, dim=0)
         signal_rates = torch.sqrt(alpha_bars)
         noise_rates = torch.sqrt(1 - alpha_bars)
-        return noise_rates, signal_rates
+        return alphas, alpha_bars, noise_rates, signal_rates
 
 
 class CosineScheduler(BaseScheduler):

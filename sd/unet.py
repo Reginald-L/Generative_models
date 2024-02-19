@@ -104,7 +104,7 @@ class Model(nn.Module):
         out = self.unet(x)
         out_img = self.convert_img_block(out)
         return out_img
-
+ 
 
 class GaussianDiffusion(nn.Module):
     def __init__(self, scheduler:BaseScheduler):
@@ -126,9 +126,11 @@ class GaussianDiffusion(nn.Module):
         return noise_rate, signal_rate
     
     def get_noise_signal_rates_from_custom_rates(self, noise_rates, signal_rates, t):
-        print(t)
         noise_rate, signal_rate = noise_rates[t], signal_rates[t]
         return noise_rate, signal_rate
+    
+    def get_value_from_tensor_by_index(self, tensor, index):
+        return tensor[index]
 
     def forward_diffusion(self, imgs, t):
         device = imgs.device
@@ -142,13 +144,25 @@ class GaussianDiffusion(nn.Module):
         noise_imgs = signal_rate * imgs + noise_rate * epsilons
         return noise_imgs.to(device), epsilons.to(device)
 
-    def denoise(self, noise_imgs, noise_rates, signal_rates, t):
+    def denoise(self, noise_imgs, alphas, alpha_bars, noise_rates, signal_rates, t, device=None, first=False):
+        if not first:
+            esp = torch.randn_like(noise_imgs)
+        else:
+            esp = torch.zeros_like(noise_imgs)
         bsize = noise_imgs.shape[0]
         noise_rate, signal_rate = self.get_noise_signal_rates_from_custom_rates(noise_rates, signal_rates, t)
-        noise_rate = self.up_dim_tensor(noise_rate, bsize)
-        signal_rate = self.up_dim_tensor(signal_rate, bsize)
-        pred_noises = self.model(noise_imgs, noise_rate**2)
-        pred_imgs = (noise_imgs - noise_rate * pred_noises) / signal_rate
+        noise_rate = self.up_dim_tensor(noise_rate, bsize).to(device)
+        signal_rate = self.up_dim_tensor(signal_rate, bsize).to(device)
+        alphas_t = self.up_dim_tensor(self.get_value_from_tensor_by_index(alphas, t), bsize).to(device)
+        alpha_bars_t = self.up_dim_tensor(self.get_value_from_tensor_by_index(alpha_bars, t), bsize).to(device)
+        # pred_noises = self.model(noise_imgs.to(device), noise_rate**2)
+        pred_noises = self.model(noise_imgs.to(device), torch.tensor(t, device=device).reshape((-1, 1)))
+
+        pred_imgs = (noise_imgs - ((1 - alphas_t) / noise_rate) * pred_noises) / torch.sqrt(alpha_bars_t)
+
+        # if not first:
+        pred_imgs = pred_imgs + torch.sqrt((1 - alphas_t)) * esp
+
         return pred_imgs, pred_noises
 
     def denoise_with_model_rates(self, noise_imgs, t):
@@ -158,17 +172,22 @@ class GaussianDiffusion(nn.Module):
         noise_rate = self.up_dim_tensor(noise_rate, bsize).to(device)
         signal_rate = self.up_dim_tensor(signal_rate, bsize).to(device)
         pred_noises = self.model(noise_imgs, noise_rate**2)
-        pred_imgs = (noise_imgs - noise_rate * pred_noises) / signal_rate
+        pred_imgs = (noise_imgs - noise_rate * pred_noises) / signal_rate 
         return pred_imgs.to(device), pred_noises.to(device)
 
+    def normalize(self, imgs):
+        return imgs * 0.5 + 0.5
+
     def reverse_diffusion(self, noises, diffusion_steps):
+        device = noises.device
         diffusion_times = torch.tensor([x / diffusion_steps for x in range(diffusion_steps)])
-        noise_rates, signal_rates = self.scheduler.diffusion_scheduler_with_diffusion_times(diffusion_times)
+        alphas, alpha_bars, noise_rates, signal_rates = self.scheduler.diffusion_scheduler_with_diffusion_times(diffusion_times)
         current_images = noises
-        for step in range(diffusion_steps)[::-1]:
-            current_images, _ = self.denoise(current_images, noise_rates, signal_rates, step)
+        for index, step in enumerate(range(diffusion_steps)[::-1]):
+            flag = True if index == 0 else False
+            current_images, _ = self.denoise(current_images, alphas, alpha_bars, noise_rates, signal_rates, step, device, first=flag)
         pred_imgs = current_images
-        return pred_imgs  
+        return pred_imgs
 
 
 
