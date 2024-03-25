@@ -36,8 +36,8 @@ def init_weights(m):
 T = 1000
 
 lr = 1e-4
-epochs = 50
-device = torch.device('cuda:2')
+epochs = 100
+device = torch.device('cuda:1')
 
 scheduler = LinearScheduler(torch.tensor([x / T for x in range(T)]))
 model = GaussianDiffusion(scheduler)
@@ -77,7 +77,7 @@ num_show_imgs = 8
 ts = [t for t in range(0, T)]
 for epoch in tqdm(range(epochs)):
     model.train()
-    ts = random.sample(ts, 20)
+    ts = random.sample(ts, 1)
     for i, imgs in enumerate(data_loader):
         optimizer.zero_grad()
         for t in tqdm(ts):
@@ -93,7 +93,7 @@ for epoch in tqdm(range(epochs)):
         # pred_noise_imgs = imgs[:8].to('cpu') + pred_imgs[:8].to('cpu')
     pred_noise_imgs = torch.concat([imgs[:num_show_imgs].to('cpu'), pred_imgs[:num_show_imgs].to('cpu')], dim=0)
     img_grid = make_grid(torch.clip(pred_noise_imgs * 0.5 + 0.5, 0, 1), nrow=num_show_imgs)
-    save_image(img_grid, f'/home/liruijun/projects/Generative_models/sd/trained_models/img_64_l1_{epoch}_{i}.png')
+    save_image(img_grid, f'/home/liruijun/projects/Generative_models/sd/trained_models/img_64_mse_{epoch}_{i}.png')
 
     if epoch % 5 == 0 and epoch != 0:
         save_model_path = f'/home/liruijun/projects/Generative_models/sd/trained_models/flower_{epoch}_64_l1.pth'

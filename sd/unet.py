@@ -149,10 +149,15 @@ class GaussianDiffusion(nn.Module):
             esp = torch.randn_like(noise_imgs)
         else:
             esp = torch.zeros_like(noise_imgs)
+
         bsize = noise_imgs.shape[0]
-        noise_rate, signal_rate = self.get_noise_signal_rates_from_custom_rates(noise_rates, signal_rates, t)
+        noise_rate, signal_rate = self.get_noise_signal_rates_by_t(t)
         noise_rate = self.up_dim_tensor(noise_rate, bsize).to(device)
         signal_rate = self.up_dim_tensor(signal_rate, bsize).to(device)
+        pred_noises = self.model(noise_imgs, noise_rate**2)
+        pred_imgs = (noise_imgs - noise_rate * pred_noises) / signal_rate 
+        # return pred_imgs.to(device), pred_noises.to(device)
+        
         alphas_t = self.up_dim_tensor(self.get_value_from_tensor_by_index(alphas, t), bsize).to(device)
         alpha_bars_t = self.up_dim_tensor(self.get_value_from_tensor_by_index(alpha_bars, t), bsize).to(device)
         # pred_noises = self.model(noise_imgs.to(device), noise_rate**2)
@@ -184,8 +189,9 @@ class GaussianDiffusion(nn.Module):
         alphas, alpha_bars, noise_rates, signal_rates = self.scheduler.diffusion_scheduler_with_diffusion_times(diffusion_times)
         current_images = noises
         for index, step in enumerate(range(diffusion_steps)[::-1]):
-            flag = True if index == 0 else False
-            current_images, _ = self.denoise(current_images, alphas, alpha_bars, noise_rates, signal_rates, step, device, first=flag)
+            with torch.no_grad():
+                flag = True if index == 0 else False
+                current_images, _ = self.denoise(current_images, alphas, alpha_bars, noise_rates, signal_rates, step, device, first=flag)
         pred_imgs = current_images
         return pred_imgs
 

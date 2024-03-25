@@ -16,7 +16,7 @@ diffusion_steps = 20
 schedure = LinearScheduler(torch.tensor([x / diffusion_steps for x in range(diffusion_steps)]))
 model = GaussianDiffusion(schedure)
 
-ckpt_path = '/home/liruijun/projects/Generative_models/sd/trained_models/flower_ema_64_l1.pth'
+ckpt_path = '/home/liruijun/projects/Generative_models/sd/trained_models/flower_95_64_mse.pth'
 model.load_state_dict(torch.load(ckpt_path))
 model = model.to(device)
 model.eval()

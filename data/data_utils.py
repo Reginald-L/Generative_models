@@ -3,7 +3,7 @@ from PIL import Image
 from pathlib import Path
 import torch
 from torch.nn.functional import tanh
-from torchvision.transforms.functional import to_tensor
+from torchvision.transforms.functional import to_tensor, normalize
 
 
 class CustomDataset(Dataset):
@@ -13,7 +13,7 @@ class CustomDataset(Dataset):
 
 
 class ImgDataset(CustomDataset):
-    def __init__(self, name='img', dir=None, transform=None, norm=True) -> None:
+    def __init__(self, name='img', dir=None, transform=None, norm=False) -> None:
         super().__init__(name)
         assert dir is not None, 'dir must be a directory containing images'
         self.dir = dir
@@ -44,5 +44,5 @@ class ImgDataset(CustomDataset):
         if not isinstance(image, torch.Tensor):
             image = self.to_tensor(image)
         if self.norm:
-            image = tanh(image)
+            image = normalize(image, [0.5], [0.5])
         return image

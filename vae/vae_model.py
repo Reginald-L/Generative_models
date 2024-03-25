@@ -17,10 +17,13 @@ class Face_Encoder(nn.Module):
     def __init__(self) -> None:
         super(Face_Encoder, self).__init__()
         self.model_util = Model_utils()
+        # 512 × 512 × 3
         self.encode_block1 = self.model_util.conv_bn_lrelu(3, 32, ksize=3, stride=2, padding=1)
         self.encode_block1_1 = self.model_util.conv_bn_lrelu(32, 32, ksize=3, stride=1, padding=1)
+        # 256 × 256 × 32
         self.encode_block2 = self.model_util.conv_bn_lrelu(32, 64, ksize=3, stride=2, padding=1)
         self.encode_block2_1 = self.model_util.conv_bn_lrelu(64, 64, ksize=3, stride=1, padding=1)
+        # 128 × 128 × 64
         self.encode_block3 = self.model_util.conv_bn_lrelu(64, 128, ksize=3, stride=2, padding=1)
         # flatten
         self.flatten = nn.Flatten()
